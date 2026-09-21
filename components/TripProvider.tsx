@@ -19,6 +19,7 @@ import {
   setStoredTripId,
 } from "@/lib/trip";
 import type {
+  BudgetCategory,
   Contribution,
   Expense,
   Member,
@@ -30,6 +31,7 @@ type TripContextValue = {
   members: Member[];
   contributions: Contribution[];
   expenses: Expense[];
+  budgetCategories: BudgetCategory[];
   loading: boolean;
   configured: boolean;
   refresh: () => Promise<void>;
@@ -58,6 +60,9 @@ export function TripProvider({
     Contribution[]
   >([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [budgetCategories, setBudgetCategories] = useState<
+    BudgetCategory[]
+  >([]);
   const [loading, setLoading] = useState(true);
 
   /*
@@ -78,6 +83,7 @@ export function TripProvider({
       setMembers([]);
       setContributions([]);
       setExpenses([]);
+      setBudgetCategories([]);
       setLoading(false);
       return;
     }
@@ -93,6 +99,7 @@ export function TripProvider({
           error: contributionError,
         },
         { data: expenseData, error: expenseError },
+        { data: budgetData, error: budgetError },
       ] = await Promise.all([
         client
           .from("trips")
@@ -121,19 +128,27 @@ export function TripProvider({
           .order("spent_at", {
             ascending: false,
           }),
+
+        client
+          .from("budget_categories")
+          .select("*")
+          .eq("trip_id", tripId)
+          .order("created_at"),
       ]);
 
       if (
         tripError ||
         memberError ||
         contributionError ||
-        expenseError
+        expenseError ||
+        budgetError
       ) {
         console.error("Failed to refresh trip data:", {
           tripError,
           memberError,
           contributionError,
           expenseError,
+          budgetError,
         });
       }
 
@@ -144,6 +159,7 @@ export function TripProvider({
         setMembers([]);
         setContributions([]);
         setExpenses([]);
+        setBudgetCategories([]);
 
         return;
       }
@@ -154,6 +170,9 @@ export function TripProvider({
         (contributionData || []) as Contribution[]
       );
       setExpenses((expenseData || []) as Expense[]);
+      setBudgetCategories(
+        (budgetData || []) as BudgetCategory[]
+      );
     } catch (error) {
       console.error(
         "Unexpected error while refreshing trip:",
@@ -238,6 +257,18 @@ export function TripProvider({
           void refresh();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "budget_categories",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        () => {
+          void refresh();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -255,9 +286,7 @@ export function TripProvider({
     const client = supabase;
 
     if (!client) {
-      throw new Error(
-        "Supabase is not configured."
-      );
+      throw new Error("Supabase is not configured.");
     }
 
     const cleanTripName = name.trim();
@@ -276,10 +305,7 @@ export function TripProvider({
       .slice(2, 8)
       .toUpperCase();
 
-    const {
-      data: created,
-      error,
-    } = await client
+    const { data: created, error } = await client
       .from("trips")
       .insert({
         name: cleanTripName,
@@ -293,9 +319,7 @@ export function TripProvider({
     }
 
     if (!created) {
-      throw new Error(
-        "Trip could not be created."
-      );
+      throw new Error("Trip could not be created.");
     }
 
     const { error: memberError } = await client
@@ -323,19 +347,13 @@ export function TripProvider({
     const client = supabase;
 
     if (!client) {
-      throw new Error(
-        "Supabase is not configured."
-      );
+      throw new Error("Supabase is not configured.");
     }
 
-    const cleanCode = code
-      .trim()
-      .toUpperCase();
+    const cleanCode = code.trim().toUpperCase();
 
     if (!cleanCode) {
-      throw new Error(
-        "Enter a trip code."
-      );
+      throw new Error("Enter a trip code.");
     }
 
     const { data, error } = await client
@@ -349,9 +367,7 @@ export function TripProvider({
     }
 
     if (!data) {
-      throw new Error(
-        "Trip code not found."
-      );
+      throw new Error("Trip code not found.");
     }
 
     setStoredTripId(data.id);
@@ -362,7 +378,7 @@ export function TripProvider({
   }
 
   /*
-   * LEAVE TRIP ON THIS DEVICE
+   * LEAVE TRIP
    */
   function leaveTrip() {
     clearStoredTrip();
@@ -371,6 +387,7 @@ export function TripProvider({
     setMembers([]);
     setContributions([]);
     setExpenses([]);
+    setBudgetCategories([]);
 
     router.replace("/setup");
   }
@@ -384,6 +401,7 @@ export function TripProvider({
       members,
       contributions,
       expenses,
+      budgetCategories,
       loading,
       configured: isSupabaseConfigured,
       refresh,
@@ -396,6 +414,7 @@ export function TripProvider({
       members,
       contributions,
       expenses,
+      budgetCategories,
       loading,
       refresh,
     ]

@@ -34,3 +34,11 @@ export type Expense = {
   note: string | null;
   created_at: string;
 };
+
+export type BudgetCategory = {
+  id: string;
+  trip_id: string;
+  category_name: string;
+  amount_per_person: number;
+  created_at: string;
+};
